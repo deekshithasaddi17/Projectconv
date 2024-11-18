@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Analysis</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(to right, #f9f9f9, #e6e6fa);
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #ffffff;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+        h1 {
+            color: #6a5acd; /* Slate Blue */
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #483d8b; /* Dark Slate Blue */
+            border-bottom: 2px solid #6a5acd; /* Underline */
+            padding-bottom: 10px;
+        }
+        form, .record-controls {
+            background-color: #e6e6fa; /* Lavender */
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .file-upload-label {
+            display: inline-block;
+            background-color: #6a5acd; /* Slate Blue */
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .file-upload-label:hover {
+            background-color: #5c4e9e; /* Darker Slate Blue */
+        }
+        button {
+            background-color: #6a5acd; /* Slate Blue */
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #5c4e9e; /* Darker Slate Blue */
+        }
+        button:disabled {
+            background-color: #d8bfd8; /* Thistle */
+            cursor: not-allowed;
+        }
+        pre {
+            background-color: #f8f8ff; /* Ghost White */
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 5px solid #6a5acd; /* Slate Blue */
+            white-space: pre-wrap;
+            word-wrap: break-word;
+
+           /* Reflection effect */
+           box-shadow:
+               inset -1px -1px 3px rgba(255,255,255,0.7),
+               inset -1px -1px 3px rgba(255,255,255,0.7),
+               inset -1px -1px 5px rgba(255,255,255,0.7);
+        }
+        .result {
+           margin-top: 30px; 
+           padding-top :10px; 
+           border-top :2px solid #6a5acd; 
+           box-shadow :0 -1px rgba(0,0,0,.1);
+       }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-volume-up"></i> Voice Insights</h1>
+
+        <!-- Upload Section -->
+        <h2><i class="fas fa-file-upload"></i> Upload Audio</h2>
+        <form id="uploadForm" method="POST" enctype="multipart/form-data">
+              <label for="audioFile" class="file-upload-label"><i class="fas fa-file-audio"></i> Choose Audio File</label>
+              <input id="audioFile" type="file" name="audio" accept="audio/*" required style="display:none;">
+              <button type="submit"><i class="fas fa-upload"></i> Analyze</button>
+          </form>
+
+      <!-- Recording Section -->
+      <h2><i class="fas fa-microphone"></i> Record Audio</h2>
+      <div class="record-controls">
+          <button id="startRecord"><i class="fas fa-play-circle"></i> Start Recording</button>
+          <button id="stopRecord" disabled><i class="fas fa-stop-circle"></i> Stop Recording</button>
+      </div>
+
+      <div id="result" class="result"></div>
+
+    </div>
+
+    <script>
+      let mediaRecorder;
+      let audioChunks = [];
+
+      document.getElementById('startRecord').addEventListener('click', async () => {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          
+          mediaRecorder = new MediaRecorder(stream);
+          
+          mediaRecorder.ondataavailable = (event) => {
+              audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+              const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+              sendAudioToServer(audioBlob);
+              audioChunks = []; // Clear the chunks for next recording
+          };
+
+          mediaRecorder.start();
+          document.getElementById('startRecord').disabled = true;
+          document.getElementById('stopRecord').disabled = false;
+
+      });
+
+      document.getElementById('stopRecord').addEventListener('click', () => {
+          mediaRecorder.stop();
+          document.getElementById('startRecord').disabled = false;
+          document.getElementById('stopRecord').disabled = true;
+
+      });
+
+      function sendAudioToServer(audioBlob) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              fetch('/', {
+                  method: 'POST',
+                  headers: {
+                      'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ audio: reader.result }),
+              })
+              .then(response => response.json())
+              .then(displayResult)
+              .catch(error => {
+                  console.error('Error:', error);
+                  displayResult({ error: 'An error occurred while processing the audio.' });
+              });
+          };
+          reader.readAsDataURL(audioBlob);
+      }
+
+      document.getElementById('uploadForm').addEventListener('submit', function(e) {
+          e.preventDefault();
+          const formData = new FormData(this);
+          
+           fetch('/', {
+              method: 'POST',
+              body: formData,
+           })
+           .then(response => response.json())
+           .then(displayResult)
+           .catch(error => {
+               console.error('Error:', error);
+               displayResult({ error: 'An error occurred while processing the audio file.' });
+           });
+       });
+
+       function displayResult(data) {
+           let resultHTML = '<h2>Analysis Result:</h2>';
+           if (data.error) {
+               resultHTML += `<p style="color: red;">${data.error}</p>`;
+           } else {
+               resultHTML += `
+                   <h3>Transcription:</h3>
+                   <pre>${data.transcription}</pre>
+                   <h3>Sentiment Analysis:</h3>
+                   <pre>${data.sentiment}</pre>
+               `;
+           }
+           document.getElementById('result').innerHTML = resultHTML;
+       }
+
+    </script>
+</body>
+</html>
